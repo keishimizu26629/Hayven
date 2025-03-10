@@ -4,6 +4,11 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:hayven/models/audio_settings.dart';
 import 'package:hayven/models/audio_state.dart';
+import 'package:hayven/services/platform_audio_channel.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:audio_session/audio_session.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:logger/logger.dart';
 
 /// オーディオ処理サービス
 ///
@@ -14,6 +19,9 @@ class AudioService {
   factory AudioService() => _instance;
   AudioService._internal();
 
+  // ロガー
+  final Logger _logger = Logger();
+
   // 状態
   final ValueNotifier<AudioState> _stateNotifier = ValueNotifier(AudioState());
   ValueNotifier<AudioState> get stateNotifier => _stateNotifier;
@@ -23,54 +31,128 @@ class AudioService {
   AudioSettings _settings = AudioSettings();
   AudioSettings get settings => _settings;
 
-  // タイマー（モック実装用）
+  // オーディオセッション
+  AudioSession? _audioSession;
+
+  // プラットフォームチャネル
+  final PlatformAudioChannel _platformAudioChannel = PlatformAudioChannel();
+
+  // イベント購読
+  StreamSubscription? _eventSubscription;
+
+  // モック用タイマー（実装完了後に削除予定）
   Timer? _mockTimer;
   final Random _random = Random();
 
   // 初期化
   Future<bool> initialize() async {
-    // 実際の実装では、ネイティブコードの初期化などを行う
-    _stateNotifier.value = AudioState();
-    return true;
+    try {
+      // マイク権限のリクエスト
+      final status = await Permission.microphone.request();
+      if (status != PermissionStatus.granted) {
+        _logger.e('マイク権限が拒否されました');
+        return false;
+      }
+
+      // オーディオセッションの設定
+      _audioSession = await AudioSession.instance;
+      await _audioSession!.configure(const AudioSessionConfiguration(
+        avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
+        avAudioSessionCategoryOptions:
+            AVAudioSessionCategoryOptions.allowBluetooth,
+        avAudioSessionMode: AVAudioSessionMode.defaultMode,
+        androidAudioAttributes: AndroidAudioAttributes(
+          contentType: AndroidAudioContentType.speech,
+          usage: AndroidAudioUsage.voiceCommunication,
+        ),
+        androidAudioFocusGainType: AndroidAudioFocusGainType.gain,
+        androidWillPauseWhenDucked: true,
+      ));
+
+      // イベント購読
+      _subscribeToEvents();
+
+      _stateNotifier.value = AudioState();
+      _logger.i('オーディオサービスが初期化されました');
+      return true;
+    } catch (e) {
+      _logger.e('オーディオサービスの初期化に失敗しました: $e');
+      return false;
+    }
   }
 
   // 処理開始
   Future<bool> start() async {
     if (state.isActive) return true;
 
-    // 実際の実装では、ネイティブコードの処理開始を呼び出す
-    _stateNotifier.value = state.copyWith(isActive: true);
+    try {
+      // オーディオセッションをアクティブにする
+      await _audioSession?.setActive(true);
 
-    // モック実装：ランダムに泣き声検出状態を変更
-    _startMockDetection();
+      // マイク入力から音声出力への処理を開始
+      final result = await _platformAudioChannel.startAudioPassthrough();
+      if (!result) {
+        _logger.e('マイク入力から音声出力への処理の開始に失敗しました');
+        return false;
+      }
 
-    return true;
+      // 状態を更新
+      _stateNotifier.value = state.copyWith(isActive: true);
+
+      // モック実装（将来的には実際の検出ロジックに置き換え）
+      _startMockDetection();
+
+      _logger.i('オーディオ処理を開始しました');
+      return true;
+    } catch (e) {
+      _logger.e('オーディオ処理の開始に失敗しました: $e');
+      return false;
+    }
   }
 
   // 処理停止
   Future<bool> stop() async {
     if (!state.isActive) return true;
 
-    // 実際の実装では、ネイティブコードの処理停止を呼び出す
-    _stateNotifier.value = state.copyWith(
-      isActive: false,
-      isCryingDetected: false,
-      detectionConfidence: 0.0,
-    );
+    try {
+      // マイク入力から音声出力への処理を停止
+      final result = await _platformAudioChannel.stopAudioPassthrough();
+      if (!result) {
+        _logger.e('マイク入力から音声出力への処理の停止に失敗しました');
+      }
 
-    // モックタイマー停止
-    _mockTimer?.cancel();
-    _mockTimer = null;
+      // オーディオセッションを非アクティブにする
+      await _audioSession?.setActive(false);
 
-    return true;
+      // 状態を更新
+      _stateNotifier.value = state.copyWith(
+        isActive: false,
+        isCryingDetected: false,
+        detectionConfidence: 0.0,
+      );
+
+      // モックタイマー停止
+      _mockTimer?.cancel();
+      _mockTimer = null;
+
+      _logger.i('オーディオ処理を停止しました');
+      return true;
+    } catch (e) {
+      _logger.e('オーディオ処理の停止に失敗しました: $e');
+      return false;
+    }
   }
 
   // 設定更新
   Future<bool> updateSettings(AudioSettings settings) async {
     _settings = settings;
 
-    // 実際の実装では、ネイティブコードの設定更新を呼び出す
+    // 音量設定を更新
+    if (state.isActive) {
+      await _platformAudioChannel.setVolume(settings.volumeReduction);
+    }
 
+    _logger.i('オーディオ設定を更新しました: ${settings.toMap()}');
     return true;
   }
 
@@ -78,6 +160,31 @@ class AudioService {
   void dispose() {
     _mockTimer?.cancel();
     _mockTimer = null;
+    _eventSubscription?.cancel();
+    _audioSession?.setActive(false);
+    _logger.i('オーディオサービスのリソースを解放しました');
+  }
+
+  // イベント購読
+  void _subscribeToEvents() {
+    _eventSubscription?.cancel();
+    _eventSubscription = _platformAudioChannel.eventStream.listen((event) {
+      if (event is Map<String, dynamic>) {
+        // イベントの処理
+        if (event.containsKey('isCryingDetected')) {
+          final isCryingDetected = event['isCryingDetected'] as bool;
+          final detectionConfidence =
+              event['detectionConfidence'] as double? ?? 0.0;
+
+          _stateNotifier.value = state.copyWith(
+            isCryingDetected: isCryingDetected,
+            detectionConfidence: detectionConfidence,
+          );
+        }
+      }
+    }, onError: (error) {
+      _logger.e('イベントストリームでエラーが発生しました: $error');
+    });
   }
 
   // モック実装：ランダムに泣き声検出状態を変更
