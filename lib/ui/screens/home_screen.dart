@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hayven/constants/app_strings.dart';
 import 'package:hayven/constants/app_theme.dart';
-import 'package:hayven/models/audio_state.dart';
-import 'package:hayven/services/audio_provider.dart';
-import 'package:hayven/widgets/detection_indicator.dart';
-import 'package:hayven/widgets/processing_button.dart';
+import 'package:hayven/audio/models/audio_state.dart';
+import 'package:hayven/audio/audio_provider.dart';
+import 'package:hayven/ui/widgets/detection_indicator.dart';
+import 'package:hayven/ui/widgets/processing_button.dart';
 import 'package:provider/provider.dart';
 
 class HomeScreen extends StatefulWidget {

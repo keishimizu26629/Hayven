@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:hayven/constants/app_strings.dart';
 import 'package:hayven/constants/app_theme.dart';
-import 'package:hayven/screens/home_screen.dart';
-import 'package:hayven/services/audio_provider.dart';
+import 'package:hayven/ui/screens/home_screen.dart';
+import 'package:hayven/audio/audio_provider.dart';
 import 'package:provider/provider.dart';
 
 void main() {

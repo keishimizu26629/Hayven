@@ -1,14 +1,16 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
-import 'package:hayven/models/audio_settings.dart';
-import 'package:hayven/models/audio_state.dart';
-import 'package:hayven/services/platform_audio_channel.dart';
+import 'package:hayven/audio/models/audio_settings.dart';
+import 'package:hayven/audio/models/audio_state.dart';
+import 'package:hayven/audio/platform_audio_channel.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:logger/logger.dart';
+import 'package:hayven/ml/crying_detector.dart';
 
 /// オーディオ処理サービス
 ///
@@ -44,8 +46,27 @@ class AudioService {
   Timer? _mockTimer;
   final Random _random = Random();
 
+  // 泣き声検出器
+  final CryingDetector _cryingDetector = CryingDetector();
+
+  bool _isInitialized = false;
+  bool _isRecording = false;
+  bool _isCryingDetected = false;
+  double _detectionConfidence = 0.0;
+
+  // 音量低減レベル（0.2=20%から1.0=100%の範囲）
+  double _volumeReductionLevel = 0.5;
+
+  // 検出結果のストリームコントローラ
+  final StreamController<DetectionResult> _detectionController =
+      StreamController<DetectionResult>.broadcast();
+
   // 初期化
   Future<bool> initialize() async {
+    if (_isInitialized) return true;
+
+    _logger.i('AudioServiceを初期化中...');
+
     try {
       // マイク権限のリクエスト
       final status = await Permission.microphone.request();
@@ -72,11 +93,19 @@ class AudioService {
       // イベント購読
       _subscribeToEvents();
 
+      // 泣き声検出器の初期化
+      final detectorInitialized = await _cryingDetector.initialize();
+      if (!detectorInitialized) {
+        _logger.e('泣き声検出器の初期化に失敗しました');
+        // 検出器の初期化に失敗してもアプリは動作可能（モック検出を使用）
+      }
+
       _stateNotifier.value = AudioState();
-      _logger.i('オーディオサービスが初期化されました');
+      _isInitialized = true;
+      _logger.i('AudioServiceの初期化が完了しました');
       return true;
     } catch (e) {
-      _logger.e('オーディオサービスの初期化に失敗しました: $e');
+      _logger.e('AudioServiceの初期化に失敗しました: $e');
       return false;
     }
   }
@@ -152,6 +181,9 @@ class AudioService {
       await _platformAudioChannel.setVolume(settings.volumeReduction);
     }
 
+    // 音量低減レベルも更新
+    _volumeReductionLevel = settings.volumeReduction.clamp(0.2, 1.0);
+
     _logger.i('オーディオ設定を更新しました: ${settings.toMap()}');
     return true;
   }
@@ -162,6 +194,7 @@ class AudioService {
     _mockTimer = null;
     _eventSubscription?.cancel();
     _audioSession?.setActive(false);
+    _detectionController.close();
     _logger.i('オーディオサービスのリソースを解放しました');
   }
 
@@ -196,9 +229,18 @@ class AudioService {
         return;
       }
 
+      // 泣き声検出器が初期化されている場合は使用しない（実際の検出を使用）
+      if (_cryingDetector.isInitialized) {
+        return;
+      }
+
       // ランダムに泣き声検出状態を変更（デモ用）
       final isCrying = _random.nextDouble() < 0.3; // 30%の確率で泣き声検出
       final confidence = isCrying ? 0.7 + _random.nextDouble() * 0.3 : 0.0;
+
+      // 音量低減レベルに基づいて実際の低減量を計算
+      final volumeReduction =
+          isCrying ? confidence * _volumeReductionLevel : 0.0;
 
       _stateNotifier.value = state.copyWith(
         isCryingDetected: isCrying,
@@ -206,6 +248,107 @@ class AudioService {
         cpuUsage: 10 + _random.nextDouble() * 5,
         memoryUsage: 50 + _random.nextDouble() * 10,
       );
+
+      // 検出結果を通知
+      _detectionController.add(DetectionResult(
+        isCrying: isCrying,
+        confidence: confidence,
+        volumeReduction: volumeReduction,
+      ));
+
+      if (isCrying) {
+        _logger.i(
+            '泣き声を検出しました（信頼度: ${confidence.toStringAsFixed(2)}, 音量低減: ${(volumeReduction * 100).toStringAsFixed(0)}%）');
+      }
     });
   }
+
+  // 音量低減レベルの設定（0.2=20%から1.0=100%の範囲）
+  set volumeReductionLevel(double level) {
+    _volumeReductionLevel = level.clamp(0.2, 1.0);
+    _logger.i('音量低減レベルを設定: $_volumeReductionLevel');
+
+    // 設定オブジェクトも更新
+    _settings = _settings.copyWith(volumeReduction: _volumeReductionLevel);
+  }
+
+  double get volumeReductionLevel => _volumeReductionLevel;
+
+  Stream<DetectionResult> get detectionStream => _detectionController.stream;
+
+  bool get isRecording => _isRecording;
+  bool get isCryingDetected => _isCryingDetected;
+  double get detectionConfidence => _detectionConfidence;
+
+  Future<void> startRecording() async {
+    if (!_isInitialized) {
+      await initialize();
+    }
+
+    if (!_isRecording) {
+      _logger.i('録音を開始します');
+      _isRecording = true;
+
+      // 実際のマイク入力とモデル推論の代わりに、モック実装を使用
+      _startMockDetection();
+    }
+  }
+
+  Future<void> stopRecording() async {
+    if (_isRecording) {
+      _logger.i('録音を停止します');
+      _isRecording = false;
+    }
+  }
+
+  // 実際の音声処理（将来的な実装）
+  Future<void> _processAudio(Float32List audioData) async {
+    if (!_isInitialized) return;
+
+    try {
+      // 泣き声検出
+      final result =
+          await _cryingDetector.detect(audioData, 16000); // サンプルレートを16kHzに設定
+
+      _isCryingDetected = result.isCrying;
+      _detectionConfidence = result.confidence;
+
+      // 音量低減レベルに基づいて実際の低減量を計算
+      final volumeReduction =
+          result.isCrying ? result.confidence * _volumeReductionLevel : 0.0;
+
+      // 検出結果を通知（音量低減情報を含む）
+      _detectionController.add(DetectionResult(
+        isCrying: result.isCrying,
+        confidence: result.confidence,
+        volumeReduction: volumeReduction,
+      ));
+
+      if (result.isCrying) {
+        _logger.i(
+            '泣き声を検出しました（信頼度: ${result.confidence.toStringAsFixed(2)}, 音量低減: ${(volumeReduction * 100).toStringAsFixed(0)}%）');
+      }
+
+      // 音声データの処理（音量低減）
+      if (result.isCrying && volumeReduction > 0) {
+        for (int i = 0; i < audioData.length; i++) {
+          audioData[i] *= (1.0 - volumeReduction);
+        }
+      }
+    } catch (e) {
+      _logger.e('音声処理中にエラーが発生しました: $e');
+    }
+  }
+}
+
+class DetectionResult {
+  final bool isCrying;
+  final double confidence;
+  final double volumeReduction;
+
+  DetectionResult({
+    required this.isCrying,
+    required this.confidence,
+    this.volumeReduction = 0.0,
+  });
 }

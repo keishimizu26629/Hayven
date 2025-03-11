@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
-import 'package:hayven/models/audio_settings.dart';
-import 'package:hayven/models/audio_state.dart';
-import 'package:hayven/services/audio_service.dart';
+import 'package:hayven/audio/models/audio_settings.dart';
+import 'package:hayven/audio/models/audio_state.dart';
+import 'package:hayven/audio/audio_service.dart';
 
 class AudioProvider extends ChangeNotifier {
   final AudioService _audioService = AudioService();

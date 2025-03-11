@@ -2,7 +2,7 @@ import Flutter
 import UIKit
 import AVFoundation
 
-@UIApplicationMain
+@main
 @objc class AppDelegate: FlutterAppDelegate {
   private var audioEngine: AVAudioEngine?
   private var isPassthroughActive = false
