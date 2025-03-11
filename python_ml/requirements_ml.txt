@@ -1,0 +1,9 @@
+# 深層学習ライブラリ
+torch>=1.8.0,<2.0.0  # asteroidとの互換性のため
+torchaudio>=0.8.0,<2.0.0  # torchと互換性のあるバージョン
+transformers==4.31.0
+datasets==2.14.4
+accelerate==0.21.0
+
+# 依存関係の競合を避けるための指定
+protobuf<=3.20.1  # pytorch-lightningとの互換性のため

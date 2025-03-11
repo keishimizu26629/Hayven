@@ -1,0 +1,12 @@
+# モデル最適化ライブラリ
+onnx==1.14.0
+# flatbuffers<3.0,>=1.12  # tf2onnxとの互換性のため
+flatbuffers>=23.1.21  # tensorflowとの互換性のため
+# tf2onnx==1.14.0  # flatbuffersとの競合があるためコメントアウト
+tensorflow>=2.13.0,<2.14.0  # Apple Siliconでも動作するバージョン
+tflite-support==0.1.0a1  # 利用可能な最新のアルファ版
+
+# ユーティリティ
+tqdm==4.66.1
+pyyaml==6.0.1
+tensorboard>=2.13.0,<2.14.0

@@ -1,0 +1,59 @@
+# FVM Version Cache
+.fvm/
+
+.ai/
+
+.DS_Store
+
+.idea/
+
+.vscode/
+
+.env
+
+.env.local
+
+# Flutter/Dart関連
+.dart_tool/
+.packages
+pubspec.lock
+build/
+
+# iOS関連
+ios/Flutter/Flutter.framework
+ios/Flutter/App.framework
+ios/Flutter/Generated.xcconfig
+ios/Flutter/ephemeral/
+ios/Pods/
+ios/Runner.xcworkspace/
+
+# Android関連
+android/.gradle/
+android/app/build/
+
+# Python関連
+/python_ml/venv/
+/python_ml/__pycache__/
+/python_ml/**/__pycache__/
+/python_ml/**/*.pyc
+/python_ml/**/*.pyo
+/python_ml/**/*.pyd
+/python_ml/.Python
+/python_ml/.pytest_cache/
+/python_ml/.coverage
+/python_ml/htmlcov/
+/python_ml/*.so
+/python_ml/*.egg
+/python_ml/*.egg-info/
+/python_ml/dist/
+/python_ml/build/
+
+# 学習データ（大きいファイルなので除外）
+/python_ml/data/raw/
+/python_ml/data/processed/
+
+# 学習済みモデル（Flutterに組み込むモデルは除外しない）
+/python_ml/models/checkpoints/
+
+# Flutterに組み込むモデル
+!/assets/models/
