@@ -1,0 +1,39 @@
+# 注意: pip<24.1を使用してください（pytorch-lightningのメタデータ問題を回避するため）
+
+# 基本的なデータ処理ライブラリ
+numpy==1.24.3
+pandas==2.0.3
+matplotlib==3.7.2
+scikit-learn==1.3.0
+
+# 音声処理ライブラリ
+librosa==0.10.1
+soundfile==0.12.1
+pyaudio==0.2.13  # macOSでは事前にportaudioのインストールが必要
+sounddevice==0.4.6
+pydub==0.25.1
+
+# 依存関係の競合を避けるための指定
+protobuf<=3.20.1  # pytorch-lightningとの互換性のため
+
+# 音源分離ライブラリ
+asteroid==0.6.1
+
+# 深層学習ライブラリ
+torch>=1.8.0,<2.0.0  # asteroidとの互換性のため
+torchaudio>=0.8.0,<2.0.0  # torchと互換性のあるバージョン
+transformers==4.31.0
+datasets==2.14.4
+accelerate==0.21.0
+
+# モデル最適化ライブラリ
+onnx==1.14.0
+flatbuffers<3.0,>=1.12  # tf2onnxとの互換性のため
+tf2onnx==1.14.0
+tensorflow>=2.13.0,<2.14.0  # Apple Siliconでも動作するバージョン
+tflite-support==0.1.0a1  # 利用可能な最新のアルファ版
+
+# ユーティリティ
+tqdm==4.66.1
+pyyaml==6.0.1
+tensorboard>=2.13.0,<2.14.0
